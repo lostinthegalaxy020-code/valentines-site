@@ -1,35 +1,22 @@
-// Aktualisierte script.js
-// - Setzt das Katzenbild auf die von dir gewünschte URL
-// - Verwendet nur das eingebettete SVG-Fallback, falls das externe Bild nicht lädt
-// - Alle restlichen Verhaltensänderungen (NO-Sprünge, Abstand, Overlay) bleiben erhalten
+// script.js — Erzwinge das gewünschte Katzenbild, robustes Fallback, NO-Button-Sprünge wie zuvor.
+// Diese Datei ersetzt die vorherige script.js; lade/ersetze nur diese Datei.
 
 document.addEventListener('DOMContentLoaded', () => {
   const yesBtn = document.getElementById('yesBtn');
   const noBtn  = document.getElementById('noBtn');
   const buttonsWrap = document.getElementById('buttons');
   const overlay = document.getElementById('overlay');
-  const catImg = document.getElementById('catImg');
   const heartsContainer = document.getElementById('hearts');
 
-  // Einstellungen
-  const minMargin = 28;    // Abstand von NO zu Viewport-Rand (px)
-  const minGap = 20;       // visuelle Mindestdistanz zwischen YES und NO (px)
-  const attempts = 80;     // Versuche um eine gültige Position zu finden
-  const minJump = 160;     // minimale Distanz (px) die NO bei einem Sprung von vorheriger Position entfernt sein soll
-  const autoCloseMs = 8000;
+  // -------------------------------------------------------
+  // Bildquelle (deine gewünschte URL)
+  // -------------------------------------------------------
+  const externalCatUrl = 'https://stickerly.pstatic.net/sticker_pack/pghXv7RCIbFWDO44zEHOA/1VLG3W/17/-468699096.png';
 
-  let lastNoPos = null;    // {left, top} zuletzt gesetzte NO-Position (viewport-Koordinaten)
-  let yesRelPos = null;    // YES-Position relativ zum Container (px)
-  let yesRect = null;
-  let noRect = null;
-  let autoCloseTimer = null;
-
-  // eingebettetes SVG-Fallback (kleine, niedliche Katze) -> sehr zuverlässig
+  // eingebettetes SVG-Fallback (falls externes Bild nicht lädt)
   const catSVG = `
   <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 420'>
-    <defs>
-      <linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#ffd7ea"/><stop offset="1" stop-color="#ffb3d6"/></linearGradient>
-    </defs>
+    <defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#ffd7ea"/><stop offset="1" stop-color="#ffb3d6"/></linearGradient></defs>
     <rect width="100%" height="100%" fill="url(#g)"/>
     <g transform="translate(80,40)" stroke="#ab2a6a" stroke-width="4" fill="#fff">
       <ellipse cx="220" cy="210" rx="110" ry="110" fill="#fff"/>
@@ -43,70 +30,78 @@ document.addEventListener('DOMContentLoaded', () => {
     <text x="50%" y="95%" font-family="Helvetica, Arial, sans-serif" font-size="24" text-anchor="middle" fill="#6b2a57">Du machst mich so glücklich! 🥰</text>
   </svg>`.trim();
 
-  function setCatFallback(){
+  function setCatFallbackToElement(imgEl) {
     try {
-      // URL-encode the svg, set as data URL
       const dataUrl = 'data:image/svg+xml;utf8,' + encodeURIComponent(catSVG);
-      if (catImg) catImg.src = dataUrl;
-    } catch (err) {
-      console.warn('Fehler beim Setzen des eingebetteten Katzen-SVGs:', err);
+      imgEl.src = dataUrl;
+    } catch (e) {
+      // fallback: leeres Bild (sehr unwahrscheinlich)
+      imgEl.removeAttribute('src');
     }
   }
 
-  // Wenn ein externes Bild bevorzugt wird, setze es hier:
-  // Deine gewünschte URL:
-  const externalCatUrl = 'https://stickerly.pstatic.net/sticker_pack/pghXv7RCIbFWDO44zEHOA/1VLG3W/17/-468699096.png';
+  // Force-replace ALL images that should show the cat (class "cat-img" oder id "catImg")
+  function enforceCatImage() {
+    // Suche nach allen Kandidaten (ID oder Klasse)
+    const candidates = [];
+    const byId = document.getElementById('catImg');
+    if (byId) candidates.push(byId);
+    document.querySelectorAll('.cat-img').forEach(n => { if (!candidates.includes(n)) candidates.push(n); });
 
-  // Setze externes Bild (der error-Handler sorgt für Fallback)
-  if (catImg) {
-    catImg.src = externalCatUrl;
-    // Falls Laden fehlschlägt, verwenden wir das SVG-Fallback
-    catImg.addEventListener('error', () => {
-      setCatFallback();
-    }, { once: true });
+    // Falls es keine <img> Elemente gibt, erstelle eins im overlay-content
+    if (candidates.length === 0) {
+      const overlayContent = overlay.querySelector('.overlay-content') || overlay;
+      const img = document.createElement('img');
+      img.id = 'catImg';
+      img.className = 'cat-img';
+      img.alt = 'Süßes Kätzchen';
+      overlayContent.insertBefore(img, overlayContent.firstChild);
+      candidates.push(img);
+    }
+
+    // Setze bei jedem Kandidaten die gewünschte URL (Cache-Buster anhängen)
+    candidates.forEach(imgEl => {
+      // Entferne srcset/data-src um sicherzugehen
+      imgEl.removeAttribute('srcset');
+      imgEl.removeAttribute('data-src');
+
+      // Hänge Cache-Buster an, damit der Browser neue Anfrage macht
+      const cbUrl = externalCatUrl + (externalCatUrl.includes('?') ? '&' : '?') + 'cb=' + Date.now();
+
+      // Setze Event-Handler: falls Laden fehlschlägt, setze Fallback
+      let handled = false;
+      const onLoad = () => {
+        handled = true;
+        // optional: kleine CSS-Anpassung, falls nötig
+        imgEl.style.opacity = '1';
+      };
+      const onError = () => {
+        if (!handled) setCatFallbackToElement(imgEl);
+      };
+
+      imgEl.addEventListener('load', onLoad, { once: true });
+      imgEl.addEventListener('error', onError, { once: true });
+
+      // Setze src zuletzt, so dass Handler greifen
+      imgEl.src = cbUrl;
+
+      // Falls das Bild durch CSP/CORS blockiert oder bereits geladen ist, prüfen wir nach kurzer Zeit
+      setTimeout(() => {
+        // Wenn das Bild noch nicht geladen (naturalWidth 0), setze Fallback
+        if (imgEl.naturalWidth === 0) setCatFallbackToElement(imgEl);
+      }, 1200);
+    });
   }
 
-  // Berechne und setze initiale Positionen: YES absolut innerhalb des .buttons Containers,
-  // NO als fixed (damit über gesamten Viewport springen kann).
-  function initPositions(){
-    // YES: absolut relativ zum buttonsWrap
-    yesBtn.style.position = 'absolute';
-    noBtn.style.position = 'fixed';
+  // ----------------------------
+  // NO-Button Bewegung (wie zuvor)
+  // ----------------------------
+  const minMargin = 28;
+  const minGap = 20;
+  const attempts = 80;
+  const minJump = 160;
+  let lastNoPos = null;
 
-    // Stelle sicher, dass YES mindestens padding vom linken Rand hat und vertikal zentriert in Buttons-Container
-    const parentRect = buttonsWrap.getBoundingClientRect();
-
-    // set temporary left/top to measure YES natural size correctly
-    yesBtn.style.left = '';
-    yesBtn.style.top = '';
-
-    const yesSize = yesBtn.getBoundingClientRect();
-    const yesLeft = Math.max(8, Math.floor(parentRect.width * 0.12));
-    const yesTop = Math.max(8, Math.floor((parentRect.height - yesSize.height) / 2));
-
-    yesBtn.style.left = `${yesLeft}px`;
-    yesBtn.style.top  = `${yesTop}px`;
-
-    // Update globale YES-Rect (viewport coords)
-    yesRect = yesBtn.getBoundingClientRect();
-    yesRelPos = { left: yesRect.left - parentRect.left, top: yesRect.top - parentRect.top, width: yesRect.width, height: yesRect.height };
-
-    // NO initial: rechts neben Card / innerhalb Margin
-    noRect = noBtn.getBoundingClientRect();
-    const initialLeft = Math.min(window.innerWidth - noRect.width - minMargin, Math.floor(window.innerWidth * 0.72));
-    const initialTop  = Math.min(window.innerHeight - noRect.height - minMargin, Math.floor(yesRect.top + (yesRect.height - noRect.height)/2));
-    const left = Math.max(minMargin, initialLeft);
-    const top  = Math.max(minMargin, initialTop);
-
-    noBtn.style.left = `${left}px`;
-    noBtn.style.top  = `${top}px`;
-    lastNoPos = { left, top };
-
-    // re-measure
-    noRect = noBtn.getBoundingClientRect();
-  }
-
-  // Hilfsfunktion: euklidische Distanz zwischen Mittelpunkten zweier Rechtecke
   function centerDistance(ax, ay, aw, ah, bx, by, bw, bh){
     const acx = ax + aw/2, acy = ay + ah/2;
     const bcx = bx + bw/2, bcy = by + bh/2;
@@ -114,14 +109,9 @@ document.addEventListener('DOMContentLoaded', () => {
     return Math.sqrt(dx*dx + dy*dy);
   }
 
-  // Finde gültige NO-Position über den ganzen Viewport:
-  // - innerhalb minMargin von Rändern
-  // - Abstand zu YES mindestens requiredDist
-  // - Distanz zu letzter NO-Position >= minJump (sofern möglich), damit Sprünge groß bleiben
-  // - bevorzugt gegenüberliegende Seite von YES (macht große Sprünge)
-  function findValidNoPosition(){
-    yesRect = yesBtn.getBoundingClientRect();
-    noRect = noBtn.getBoundingClientRect();
+  function findValidNoPosition() {
+    const yesRect = yesBtn.getBoundingClientRect();
+    const noRect = noBtn.getBoundingClientRect();
 
     const maxLeft = window.innerWidth - noRect.width - minMargin;
     const maxTop  = window.innerHeight - noRect.height - minMargin;
@@ -129,15 +119,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const minTop  = minMargin;
 
     const requiredDist = Math.max((yesRect.width + noRect.width)/2 + minGap, 140);
-
-    // bestimme bevorzugte X-Zone: wenn YES links ist, wollen wir NO eher rechts und umgekehrt
     const yesCenterX = yesRect.left + yesRect.width / 2;
     const preferRight = yesCenterX < window.innerWidth / 2;
 
-    // Versuche zufällige Positionen, die groß genug springen
-    let bestCandidate = null;
-    let bestScore = -Infinity;
-    for (let i = 0; i < attempts; i++){
+    let bestCandidate = null, bestScore = -Infinity;
+    for (let i=0;i<attempts;i++){
       const zoneChoice = Math.random();
       let left;
       if (zoneChoice < 0.46) {
@@ -147,37 +133,29 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         left = Math.floor(minLeft + Math.random() * Math.max(1, maxLeft - minLeft));
       }
-
       const top = Math.floor(minTop + Math.random() * Math.max(1, maxTop - minTop));
-
       const distToYes = centerDistance(left, top, noRect.width, noRect.height, yesRect.left, yesRect.top, yesRect.width, yesRect.height);
 
-      // dist to last NO (if exist)
       let distToLastNo = Infinity;
       if (lastNoPos) {
         const dx = (left + noRect.width/2) - (lastNoPos.left + noRect.width/2);
         const dy = (top + noRect.height/2) - (lastNoPos.top + noRect.height/2);
         distToLastNo = Math.sqrt(dx*dx + dy*dy);
       }
-
-      // Score: belohne größere Entfernung zu YES & größere Entfernung zu letztem NO & bevorzugte Seite
       let score = distToYes + 0.6 * distToLastNo;
       const candidateOnRight = (left + noRect.width/2) > window.innerWidth / 2;
       if ((preferRight && candidateOnRight) || (!preferRight && !candidateOnRight)) score += 50;
 
-      // akzeptiere wenn distToYes >= requiredDist und distToLastNo >= minJump (wenn möglich)
       if (distToYes >= requiredDist && (distToLastNo >= minJump || !lastNoPos)) {
         return { left: Math.min(Math.max(left, minLeft), maxLeft), top: Math.min(Math.max(top, minTop), maxTop) };
       }
-
-      // Merke besten Kandidaten für Fallback
       if (score > bestScore) {
         bestScore = score;
-        bestCandidate = { left, top, distToYes, distToLastNo };
+        bestCandidate = { left, top };
       }
     }
 
-    // Fallbacks: Ecken (prüfe, ob eine Ecke ausreichend weit von YES ist)
+    // corners fallback
     const corners = [
       { left: minLeft, top: minTop },
       { left: maxLeft, top: minTop },
@@ -185,26 +163,20 @@ document.addEventListener('DOMContentLoaded', () => {
       { left: maxLeft, top: maxTop },
     ];
     for (const p of corners) {
-      const d = centerDistance(p.left, p.top, noRect.width, noRect.height, yesRect.left, yesRect.top, yesRect.width, yesRect.height);
+      const d = centerDistance(p.left, p.top, noBtn.getBoundingClientRect().width, noBtn.getBoundingClientRect().height, yesBtn.getBoundingClientRect().left, yesBtn.getBoundingClientRect().top, yesBtn.getBoundingClientRect().width, yesBtn.getBoundingClientRect().height);
       if (d >= requiredDist) return p;
     }
 
-    // Wenn nichts perfekt, wähle besten Kandidaten aus Random-Versuchen
-    if (bestCandidate) {
-      const left = Math.min(Math.max(bestCandidate.left, minLeft), maxLeft);
-      const top  = Math.min(Math.max(bestCandidate.top, minTop), maxTop);
-      return { left, top };
-    }
+    if (bestCandidate) return bestCandidate;
 
-    // Letzte Rettung: kleine Anpassung der aktuellen Position
+    // last resort small move
     const curLeft = parseInt(noBtn.style.left || minLeft, 10) || minLeft;
     const curTop  = parseInt(noBtn.style.top || minTop, 10) || minTop;
-    const newLeft = Math.min(Math.max(curLeft + (Math.random() < 0.5 ? -minJump/2 : minJump/2), minLeft), maxLeft);
-    const newTop  = Math.min(Math.max(curTop + (Math.random() < 0.5 ? -minJump/3 : minJump/3), minTop), maxTop);
+    const newLeft = Math.min(Math.max(curLeft + (Math.random() < 0.5 ? -minJump/2 : minJump/2), minLeft), window.innerWidth - noBtn.getBoundingClientRect().width - minMargin);
+    const newTop  = Math.min(Math.max(curTop + (Math.random() < 0.5 ? -minJump/3 : minJump/3), minTop), window.innerHeight - noBtn.getBoundingClientRect().height - minMargin);
     return { left: newLeft, top: newTop };
   }
 
-  // Führt die Bewegung aus und merkt die Position als letzte Position
   function moveNoButton(){
     const target = findValidNoPosition();
     noBtn.style.left = `${target.left}px`;
@@ -212,52 +184,31 @@ document.addEventListener('DOMContentLoaded', () => {
     lastNoPos = { left: target.left, top: target.top };
   }
 
-  // Events: hover, touchstart, click -> move
-  noBtn.addEventListener('mouseenter', () => {
-    moveNoButton();
-  }, { passive: true });
+  // Events für NO
+  noBtn.addEventListener('mouseenter', () => moveNoButton(), { passive: true });
+  noBtn.addEventListener('touchstart', (e) => { e.preventDefault(); moveNoButton(); }, { passive: false });
+  noBtn.addEventListener('click', (e) => { e.preventDefault(); moveNoButton(); });
 
-  noBtn.addEventListener('touchstart', (e) => {
-    e.preventDefault(); // verhindert sofortigen Klick
-    moveNoButton();
-  }, { passive: false });
-
-  noBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    // spring sofort an neue große Position
-    moveNoButton();
-  });
-
-  // YES: overlay mit katze + herz-Animation, overlay schließt bei tap/click oder nach Timeout
+  // YES -> Overlay + Erzwinge Katzenbild, Herzanimation
+  let autoCloseTimer = null;
   yesBtn.addEventListener('click', () => {
-    showOverlayWithCat();
-    spawnHearts(28);
-  });
-
-  function showOverlayWithCat(){
-    // Wenn das Bild noch nicht geladen ist oder leer, setze Fallback jetzt
-    if (catImg && (!catImg.src || catImg.naturalWidth === 0)) {
-      setCatFallback();
-    }
+    enforceCatImage();
     overlay.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
-
+    spawnHearts(28);
     clearTimeout(autoCloseTimer);
-    autoCloseTimer = setTimeout(hideOverlay, autoCloseMs);
-  }
-
-  overlay.addEventListener('click', () => {
-    hideOverlay();
+    autoCloseTimer = setTimeout(() => { overlay.classList.add('hidden'); document.body.style.overflow = ''; heartsContainer.innerHTML = ''; }, 8000);
   });
 
-  function hideOverlay(){
+  // Overlay schließt bei Klick
+  overlay.addEventListener('click', () => {
     overlay.classList.add('hidden');
     document.body.style.overflow = '';
     heartsContainer.innerHTML = '';
     clearTimeout(autoCloseTimer);
-  }
+  });
 
-  // Herzpartikel wie zuvor (kleine optische Spielerei)
+  // Herzpartikel
   function spawnHearts(count = 20){
     for (let i=0;i<count;i++){
       const h = document.createElement('div');
@@ -283,7 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Füge CSS für Herzpartikel (falls noch nicht vorhanden)
+  // Herz-Styles (falls noch nicht vorhanden)
   (function addHeartStyles(){
     if (document.getElementById('__heartStyles')) return;
     const s = document.createElement('style');
@@ -301,16 +252,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.head.appendChild(s);
   })();
 
-  // Initialisierung ausführen
-  initPositions();
+  // Initialisierung: setze Bild bereits jetzt (so dass Overlay sofort das gewünschte Bild zeigt)
+  enforceCatImage();
 
-  // Bei Resize: YES innerhalb Container neu positionieren, NO in Bounds halten
+  // Auf Resize: stelle sicher, dass NO innerhalb des Viewports bleibt
   let resizeTimer = null;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      initPositions();
-      // NO innerhalb Viewport-Rand halten
+      // NO in Grenzen halten
       const nr = noBtn.getBoundingClientRect();
       const maxLeft = Math.max(minMargin, window.innerWidth - nr.width - minMargin);
       const maxTop  = Math.max(minMargin, window.innerHeight - nr.height - minMargin);
