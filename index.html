@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Will you be my valentine?</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="page">
+    <div class="card">
+      <h1 class="question">Will you be my valentine?</h1>
+
+      <div class="buttons" id="buttons">
+        <button id="yesBtn" class="btn btn-yes" aria-label="Yes">YES</button>
+        <button id="noBtn" class="btn btn-no" aria-label="No">NO</button>
+      </div>
+    </div>
+
+    <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">
+      <div class="overlay-content">
+        <h2>Yay! 💖</h2>
+        <p>Ich freue mich so sehr! ✨</p>
+        <button id="closeBtn" class="btn btn-close">Close</button>
+      </div>
+      <div id="hearts" class="hearts"></div>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
