@@ -1,10 +1,7 @@
-// Aktualisierte Logik für:
-// - zuverlässige, große Sprünge des NO-Knopfs (bleibt aber mit Mindestabstand zum Viewportrand)
-// - NO vermeidet Überlappung mit YES (Mindestabstand wird eingehalten)
-// - verhindert, dass die Buttons übereinander landen
-// - robustes Verhalten auch nach erstem Klick (keine kleinen Sprünge mehr)
-// - sicheres Laden eines Katzenbildes (FALLBACK: eingebettetes SVG als data:URL)
-// Nur diese Datei muss ersetzt werden.
+// Aktualisierte script.js
+// - Setzt das Katzenbild auf die von dir gewünschte URL
+// - Verwendet nur das eingebettete SVG-Fallback, falls das externe Bild nicht lädt
+// - Alle restlichen Verhaltensänderungen (NO-Sprünge, Abstand, Overlay) bleiben erhalten
 
 document.addEventListener('DOMContentLoaded', () => {
   const yesBtn = document.getElementById('yesBtn');
@@ -52,9 +49,21 @@ document.addEventListener('DOMContentLoaded', () => {
       const dataUrl = 'data:image/svg+xml;utf8,' + encodeURIComponent(catSVG);
       if (catImg) catImg.src = dataUrl;
     } catch (err) {
-      // Silently ignore - im schlimmsten Fall bleibt das img leer
       console.warn('Fehler beim Setzen des eingebetteten Katzen-SVGs:', err);
     }
+  }
+
+  // Wenn ein externes Bild bevorzugt wird, setze es hier:
+  // Deine gewünschte URL:
+  const externalCatUrl = 'https://stickerly.pstatic.net/sticker_pack/pghXv7RCIbFWDO44zEHOA/1VLG3W/17/-468699096.png';
+
+  // Setze externes Bild (der error-Handler sorgt für Fallback)
+  if (catImg) {
+    catImg.src = externalCatUrl;
+    // Falls Laden fehlschlägt, verwenden wir das SVG-Fallback
+    catImg.addEventListener('error', () => {
+      setCatFallback();
+    }, { once: true });
   }
 
   // Berechne und setze initiale Positionen: YES absolut innerhalb des .buttons Containers,
@@ -71,12 +80,10 @@ document.addEventListener('DOMContentLoaded', () => {
     yesBtn.style.left = '';
     yesBtn.style.top = '';
 
-    // kleine Verzögerung nicht nötig — DOM ist ready; messen
     const yesSize = yesBtn.getBoundingClientRect();
     const yesLeft = Math.max(8, Math.floor(parentRect.width * 0.12));
     const yesTop = Math.max(8, Math.floor((parentRect.height - yesSize.height) / 2));
 
-    // Setze relative Pixelwerte (relativ zur Container)
     yesBtn.style.left = `${yesLeft}px`;
     yesBtn.style.top  = `${yesTop}px`;
 
@@ -131,17 +138,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let bestCandidate = null;
     let bestScore = -Infinity;
     for (let i = 0; i < attempts; i++){
-      // Bias: wähle entweder weit links oder weit rechts, selten mittig
       const zoneChoice = Math.random();
       let left;
       if (zoneChoice < 0.46) {
-        // linke Zone (biased)
         left = Math.floor(minLeft + Math.random() * Math.max(1, Math.floor(window.innerWidth * 0.32) - minLeft));
       } else if (zoneChoice < 0.92) {
-        // rechte Zone (biased)
         left = Math.floor(Math.max(minLeft, Math.floor(window.innerWidth * 0.68)) + Math.random() * Math.max(1, maxLeft - Math.floor(window.innerWidth * 0.68)));
       } else {
-        // mittig
         left = Math.floor(minLeft + Math.random() * Math.max(1, maxLeft - minLeft));
       }
 
@@ -159,7 +162,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Score: belohne größere Entfernung zu YES & größere Entfernung zu letztem NO & bevorzugte Seite
       let score = distToYes + 0.6 * distToLastNo;
-      // prefer side
       const candidateOnRight = (left + noRect.width/2) > window.innerWidth / 2;
       if ((preferRight && candidateOnRight) || (!preferRight && !candidateOnRight)) score += 50;
 
@@ -205,7 +207,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Führt die Bewegung aus und merkt die Position als letzte Position
   function moveNoButton(){
     const target = findValidNoPosition();
-    // setzen
     noBtn.style.left = `${target.left}px`;
     noBtn.style.top  = `${target.top}px`;
     lastNoPos = { left: target.left, top: target.top };
@@ -234,7 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function showOverlayWithCat(){
-    // ensure cat image is set (fallback wenn externe Quelle nicht geladen ist)
+    // Wenn das Bild noch nicht geladen ist oder leer, setze Fallback jetzt
     if (catImg && (!catImg.src || catImg.naturalWidth === 0)) {
       setCatFallback();
     }
@@ -301,7 +302,6 @@ document.addEventListener('DOMContentLoaded', () => {
   })();
 
   // Initialisierung ausführen
-  setCatFallback(); // stellt sicher, dass ein Bild verfügbar ist, falls externes nicht lädt
   initPositions();
 
   // Bei Resize: YES innerhalb Container neu positionieren, NO in Bounds halten
@@ -323,10 +323,4 @@ document.addEventListener('DOMContentLoaded', () => {
       lastNoPos = { left, top };
     }, 120);
   });
-
-  // Sicherheitsnetz: falls Bild extern angegeben ist und nicht geladen wurde, bei error fallback setzen
-  if (catImg) {
-    catImg.addEventListener('error', () => setCatFallback());
-    // falls external src schon gesetzt, versuchen wir das externe laden; falls es fehlschlägt, wird error-Handler aktiv
-  }
 });
