@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -7,23 +7,23 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="page">
+  <main class="page" id="mainContent">
     <div class="card">
       <h1 class="question">Will you be my valentine?</h1>
 
-      <div class="buttons" id="buttons" aria-hidden="false">
-        <button id="yesBtn" class="btn btn-yes" aria-label="Yes">YES</button>
-        <button id="noBtn" class="btn btn-no" aria-label="No">NO</button>
+      <div class="buttons" id="buttons">
+        <button id="yesBtn" class="btn btn-yes" aria-label="Yes" type="button">YES</button>
+        <button id="noBtn" class="btn btn-no" aria-label="No" type="button">NO</button>
       </div>
     </div>
 
-    <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">
+    <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="overlayTitle" tabindex="-1">
       <div class="overlay-content">
-        <h2>Yay! 💖</h2>
-        <p>Ich freue mich so sehr! ✨</p>
-        <button id="closeBtn" class="btn btn-close">Close</button>
+        <h2 id="overlayTitle">Yay! 💖</h2>
+        <p lang="de">Ich freue mich so sehr! ✨</p>
+        <button id="closeBtn" class="btn btn-close" type="button" aria-label="Close dialog">Close</button>
       </div>
-      <div id="hearts" class="hearts"></div>
+      <div id="hearts" class="hearts" aria-hidden="true"></div>
     </div>
   </main>
 
