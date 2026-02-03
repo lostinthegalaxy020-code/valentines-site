@@ -3,86 +3,78 @@ document.addEventListener('DOMContentLoaded', () => {
   const noBtn = document.getElementById('noBtn');
   const buttonsWrap = document.getElementById('buttons');
   const overlay = document.getElementById('overlay');
-  const closeBtn = document.getElementById('closeBtn');
   const heartsContainer = document.getElementById('hearts');
 
-  let parentRect = null;
   let yesRect = null;
   let noRect = null;
 
-  const minGap = 16; // minimaler Abstand zwischen Buttons in px
-  const padding = 8; // Abstand zum Container-Rand
+  // settings
+  const minMargin = 28; // px margin from viewport edges for NO
+  const minGap = 18;    // minimal visual gap between YES and NO (px)
+  const attempts = 60;  // number of tries to find a valid position
+  const autoCloseMs = 8000; // overlay auto-close after this many ms (optional)
 
-  // initial setup: position both buttons absolutely inside the container
-  function setInitialPositions(){
-    parentRect = buttonsWrap.getBoundingClientRect();
-
-    // reset any inline positioning so we can measure natural sizes
-    yesBtn.style.left = '';
-    yesBtn.style.top = '';
-    noBtn.style.left = '';
-    noBtn.style.top = '';
+  // initial placement: YES inside buttons container, NO near the right side of the viewport
+  function initPositions(){
+    // ensure YES is absolutely placed inside the .buttons container
     yesBtn.style.position = 'absolute';
-    noBtn.style.position = 'absolute';
+    noBtn.style.position = 'fixed'; // allow jumps across the whole viewport
 
-    // measure button sizes (after CSS adjustments)
+    // measure YES after making it absolute
+    const parentRect = buttonsWrap.getBoundingClientRect();
+    yesBtn.style.left = `${Math.max(8, Math.floor(parentRect.width * 0.12))}px`;
+    yesBtn.style.top = `${Math.max(8, Math.floor((parentRect.height - yesBtn.getBoundingClientRect().height)/2))}px`;
+
+    // measure rects
     yesRect = yesBtn.getBoundingClientRect();
     noRect = noBtn.getBoundingClientRect();
 
-    // vertical center
-    const centerY = Math.max(padding, (parentRect.height - yesRect.height) / 2);
+    // place NO initially to the right of the card area (but within viewport margin)
+    const initialLeft = Math.min(window.innerWidth - noRect.width - minMargin, Math.floor(window.innerWidth * 0.72));
+    const initialTop  = Math.min(window.innerHeight - noRect.height - minMargin, Math.floor(yesRect.top + (yesRect.height - noRect.height)/2));
+    noBtn.style.left = `${Math.max(minMargin, initialLeft)}px`;
+    noBtn.style.top  = `${Math.max(minMargin, initialTop)}px`;
 
-    // place YES on the left-ish, NO on the right-ish
-    const yesLeft = Math.max(padding, Math.floor(parentRect.width * 0.12));
-    const noLeft = Math.min(parentRect.width - noRect.width - padding, Math.floor(parentRect.width * 0.72));
-
-    yesBtn.style.left = `${yesLeft}px`;
-    yesBtn.style.top = `${centerY}px`;
-
-    noBtn.style.left = `${noLeft}px`;
-    noBtn.style.top = `${centerY}px`;
-
-    // re-measure after setting positions
+    // refresh rects
     yesRect = yesBtn.getBoundingClientRect();
     noRect = noBtn.getBoundingClientRect();
   }
 
-  // compute a valid new position for NO that doesn't overlap YES
-  function findValidNoPosition(attempts = 30){
-    parentRect = buttonsWrap.getBoundingClientRect();
+  // helper to compute center distance
+  function centerDistance(ax, ay, aw, ah, bx, by, bw, bh){
+    const acx = ax + aw/2, acy = ay + ah/2;
+    const bcx = bx + bw/2, bcy = by + bh/2;
+    const dx = acx - bcx, dy = acy - bcy;
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+
+  // find a valid new position for NO across the viewport that keeps margin and distance to YES
+  function findValidNoPosition(){
     yesRect = yesBtn.getBoundingClientRect();
     noRect = noBtn.getBoundingClientRect();
 
-    const maxLeft = parentRect.width - noRect.width - padding;
-    const maxTop  = parentRect.height - noRect.height - padding;
-    const minLeft = padding;
-    const minTop  = padding;
+    const maxLeft = window.innerWidth - noRect.width - minMargin;
+    const maxTop  = window.innerHeight - noRect.height - minMargin;
+    const minLeft = minMargin;
+    const minTop  = minMargin;
 
-    // compute minimal center distance to avoid visually overlapping
-    const requiredDist = Math.max((yesRect.width + noRect.width) / 2 + minGap, 90);
+    // required minimal center distance to avoid overlapping YES
+    const requiredDist = Math.max((yesRect.width + noRect.width)/2 + minGap, 140);
 
+    // Try random positions across the viewport, prefer edges (bigger jumps)
     for (let i = 0; i < attempts; i++) {
-      // bias positions towards edges for playful movement
-      const left = Math.floor(minLeft + Math.random() ** 0.9 * (maxLeft - minLeft));
-      const top  = Math.floor(minTop + (Math.random() - 0.5) * 18 + (parentRect.height - noRect.height) / 2);
+      // bias to large jumps: choose either left or right half then random
+      const leftZone = (Math.random() < 0.5) ? [minLeft, Math.max(minLeft, Math.floor(window.innerWidth*0.25))] : [Math.max(minLeft, Math.floor(window.innerWidth*0.6)), maxLeft];
+      const left = Math.floor(leftZone[0] + Math.random() * Math.max(1, leftZone[1] - leftZone[0]));
+      const top  = Math.floor(minTop + Math.random() * Math.max(1, maxTop - minTop));
 
-      // compute centers relative to viewport (we'll compare)
-      const candidateCenterX = parentRect.left + left + noRect.width / 2;
-      const candidateCenterY = parentRect.top + top + noRect.height / 2;
-
-      const yesCenterX = yesRect.left + yesRect.width / 2;
-      const yesCenterY = yesRect.top + yesRect.height / 2;
-
-      const dx = candidateCenterX - yesCenterX;
-      const dy = candidateCenterY - yesCenterY;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-
+      const dist = centerDistance(left, top, noRect.width, noRect.height, yesRect.left, yesRect.top, yesRect.width, yesRect.height);
       if (dist >= requiredDist) {
-        return {left, top};
+        return { left, top };
       }
     }
 
-    // fallback: try forced positions at corners (left/top/right)
+    // fallback to corners if random failed
     const fallbacks = [
       { left: minLeft, top: minTop },
       { left: maxLeft, top: minTop },
@@ -90,66 +82,65 @@ document.addEventListener('DOMContentLoaded', () => {
       { left: maxLeft, top: maxTop },
     ];
     for (const p of fallbacks) {
-      const candidateCenterX = parentRect.left + p.left + noRect.width / 2;
-      const yesCenterX = yesRect.left + yesRect.width / 2;
-      const dx = candidateCenterX - yesCenterX;
-      const dy = (parentRect.top + p.top + noRect.height / 2) - (yesRect.top + yesRect.height / 2);
-      const dist = Math.sqrt(dx*dx + dy*dy);
+      const dist = centerDistance(p.left, p.top, noRect.width, noRect.height, yesRect.left, yesRect.top, yesRect.width, yesRect.height);
       if (dist >= requiredDist) return p;
     }
 
-    // last resort: stay where it is
-    return { left: parseInt(noBtn.style.left || 0, 10), top: parseInt(noBtn.style.top || 0, 10) };
+    // last resort: keep current position
+    return { left: parseInt(noBtn.style.left || minLeft, 10), top: parseInt(noBtn.style.top || minTop, 10) };
   }
 
-  // move NO button to a valid position with animation
+  // perform move with animation (CSS transition handles it)
   function moveNoButton(){
-    // compute target
     const target = findValidNoPosition();
-    // apply
     noBtn.style.left = `${target.left}px`;
     noBtn.style.top  = `${target.top}px`;
   }
 
-  // event handlers
+  // events: hover, touchstart, click -> move
   noBtn.addEventListener('mouseenter', () => {
     moveNoButton();
-  }, {passive:true});
+  }, { passive: true });
 
   noBtn.addEventListener('touchstart', (e) => {
-    // prevent immediate click if touch moves it
-    e.preventDefault();
+    e.preventDefault(); // prevent immediate click
     moveNoButton();
-  }, {passive:false});
+  }, { passive: false });
 
-  // On click, move away instead of accepting the NO
   noBtn.addEventListener('click', (e) => {
     e.preventDefault();
     moveNoButton();
   });
 
-  // YES behavior unchanged: show overlay + hearts
+  // YES: show overlay with cat and message; close overlay on any tap/click or after timeout
+  let autoCloseTimer = null;
   yesBtn.addEventListener('click', () => {
-    showOverlay();
-    spawnHearts(24);
+    showOverlayWithCat();
+    spawnHearts(28);
   });
 
-  closeBtn.addEventListener('click', () => {
-    hideOverlay();
-  });
-
-  function showOverlay(){
+  function showOverlayWithCat(){
     overlay.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
+
+    // auto-close after a bit (optional) and allow tap-to-close
+    clearTimeout(autoCloseTimer);
+    autoCloseTimer = setTimeout(hideOverlay, autoCloseMs);
   }
+
+  // hide overlay on click anywhere
+  overlay.addEventListener('click', () => {
+    hideOverlay();
+  });
 
   function hideOverlay(){
     overlay.classList.add('hidden');
     document.body.style.overflow = '';
     heartsContainer.innerHTML = '';
+    clearTimeout(autoCloseTimer);
   }
 
-  // hearts (same as before)
+  // hearts (same idea as before)
   function spawnHearts(count = 20){
     for (let i=0;i<count;i++){
       const h = document.createElement('div');
@@ -175,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // create CSS for heart particles
+  // CSS for heart particles
   (function addHeartStyles(){
     const s = document.createElement('style');
     s.textContent = `
@@ -191,15 +182,29 @@ document.addEventListener('DOMContentLoaded', () => {
     document.head.appendChild(s);
   })();
 
-  // initialize positions once DOM + fonts ready
-  setInitialPositions();
+  // initialize positions after fonts/layout are ready
+  function readyInit(){
+    initPositions();
+  }
 
-  // recompute positions on resize to avoid layout issues
+  // run initial setup
+  readyInit();
+
+  // on resize, recompute YES position (keeps YES inside card) and keep NO within viewport
   let resizeTimer = null;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      setInitialPositions();
+      initPositions();
+      // ensure NO stays within new viewport bounds
+      const maxLeft = Math.max(minMargin, window.innerWidth - noBtn.getBoundingClientRect().width - minMargin);
+      const maxTop  = Math.max(minMargin, window.innerHeight - noBtn.getBoundingClientRect().height - minMargin);
+      let left = parseInt(noBtn.style.left || minMargin, 10);
+      let top  = parseInt(noBtn.style.top || minMargin, 10);
+      left = Math.min(Math.max(left, minMargin), maxLeft);
+      top  = Math.min(Math.max(top, minMargin), maxTop);
+      noBtn.style.left = `${left}px`;
+      noBtn.style.top  = `${top}px`;
     }, 120);
   });
 });
