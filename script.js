@@ -1,4 +1,3 @@
-// playful behavior for NO button and yes animation
 document.addEventListener('DOMContentLoaded', () => {
   const yesBtn = document.getElementById('yesBtn');
   const noBtn = document.getElementById('noBtn');
@@ -7,7 +6,129 @@ document.addEventListener('DOMContentLoaded', () => {
   const closeBtn = document.getElementById('closeBtn');
   const heartsContainer = document.getElementById('hearts');
 
-  // When YES is clicked: show overlay and spawn hearts
+  let parentRect = null;
+  let yesRect = null;
+  let noRect = null;
+
+  const minGap = 16; // minimaler Abstand zwischen Buttons in px
+  const padding = 8; // Abstand zum Container-Rand
+
+  // initial setup: position both buttons absolutely inside the container
+  function setInitialPositions(){
+    parentRect = buttonsWrap.getBoundingClientRect();
+
+    // reset any inline positioning so we can measure natural sizes
+    yesBtn.style.left = '';
+    yesBtn.style.top = '';
+    noBtn.style.left = '';
+    noBtn.style.top = '';
+    yesBtn.style.position = 'absolute';
+    noBtn.style.position = 'absolute';
+
+    // measure button sizes (after CSS adjustments)
+    yesRect = yesBtn.getBoundingClientRect();
+    noRect = noBtn.getBoundingClientRect();
+
+    // vertical center
+    const centerY = Math.max(padding, (parentRect.height - yesRect.height) / 2);
+
+    // place YES on the left-ish, NO on the right-ish
+    const yesLeft = Math.max(padding, Math.floor(parentRect.width * 0.12));
+    const noLeft = Math.min(parentRect.width - noRect.width - padding, Math.floor(parentRect.width * 0.72));
+
+    yesBtn.style.left = `${yesLeft}px`;
+    yesBtn.style.top = `${centerY}px`;
+
+    noBtn.style.left = `${noLeft}px`;
+    noBtn.style.top = `${centerY}px`;
+
+    // re-measure after setting positions
+    yesRect = yesBtn.getBoundingClientRect();
+    noRect = noBtn.getBoundingClientRect();
+  }
+
+  // compute a valid new position for NO that doesn't overlap YES
+  function findValidNoPosition(attempts = 30){
+    parentRect = buttonsWrap.getBoundingClientRect();
+    yesRect = yesBtn.getBoundingClientRect();
+    noRect = noBtn.getBoundingClientRect();
+
+    const maxLeft = parentRect.width - noRect.width - padding;
+    const maxTop  = parentRect.height - noRect.height - padding;
+    const minLeft = padding;
+    const minTop  = padding;
+
+    // compute minimal center distance to avoid visually overlapping
+    const requiredDist = Math.max((yesRect.width + noRect.width) / 2 + minGap, 90);
+
+    for (let i = 0; i < attempts; i++) {
+      // bias positions towards edges for playful movement
+      const left = Math.floor(minLeft + Math.random() ** 0.9 * (maxLeft - minLeft));
+      const top  = Math.floor(minTop + (Math.random() - 0.5) * 18 + (parentRect.height - noRect.height) / 2);
+
+      // compute centers relative to viewport (we'll compare)
+      const candidateCenterX = parentRect.left + left + noRect.width / 2;
+      const candidateCenterY = parentRect.top + top + noRect.height / 2;
+
+      const yesCenterX = yesRect.left + yesRect.width / 2;
+      const yesCenterY = yesRect.top + yesRect.height / 2;
+
+      const dx = candidateCenterX - yesCenterX;
+      const dy = candidateCenterY - yesCenterY;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+
+      if (dist >= requiredDist) {
+        return {left, top};
+      }
+    }
+
+    // fallback: try forced positions at corners (left/top/right)
+    const fallbacks = [
+      { left: minLeft, top: minTop },
+      { left: maxLeft, top: minTop },
+      { left: minLeft, top: maxTop },
+      { left: maxLeft, top: maxTop },
+    ];
+    for (const p of fallbacks) {
+      const candidateCenterX = parentRect.left + p.left + noRect.width / 2;
+      const yesCenterX = yesRect.left + yesRect.width / 2;
+      const dx = candidateCenterX - yesCenterX;
+      const dy = (parentRect.top + p.top + noRect.height / 2) - (yesRect.top + yesRect.height / 2);
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist >= requiredDist) return p;
+    }
+
+    // last resort: stay where it is
+    return { left: parseInt(noBtn.style.left || 0, 10), top: parseInt(noBtn.style.top || 0, 10) };
+  }
+
+  // move NO button to a valid position with animation
+  function moveNoButton(){
+    // compute target
+    const target = findValidNoPosition();
+    // apply
+    noBtn.style.left = `${target.left}px`;
+    noBtn.style.top  = `${target.top}px`;
+  }
+
+  // event handlers
+  noBtn.addEventListener('mouseenter', () => {
+    moveNoButton();
+  }, {passive:true});
+
+  noBtn.addEventListener('touchstart', (e) => {
+    // prevent immediate click if touch moves it
+    e.preventDefault();
+    moveNoButton();
+  }, {passive:false});
+
+  // On click, move away instead of accepting the NO
+  noBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    moveNoButton();
+  });
+
+  // YES behavior unchanged: show overlay + hearts
   yesBtn.addEventListener('click', () => {
     showOverlay();
     spawnHearts(24);
@@ -17,71 +138,22 @@ document.addEventListener('DOMContentLoaded', () => {
     hideOverlay();
   });
 
-  // NO button dodges on hover (desktop) or touchstart (mobile)
-  function dodgeNoButton(){
-    const parentRect = buttonsWrap.getBoundingClientRect();
-    const noRect = noBtn.getBoundingClientRect();
-
-    // compute a random position within the parent area
-    const padding = 6;
-    const maxLeft = Math.max(0, parentRect.width - noRect.width - padding);
-    const maxTop  = Math.max(0, parentRect.height - noRect.height - padding);
-
-    // Try swapping positions with YES sometimes
-    if (Math.random() < 0.36) {
-      // swap positions visually by reversing flex order
-      buttonsWrap.style.flexDirection = buttonsWrap.style.flexDirection === 'row-reverse' ? 'row' : 'row-reverse';
-      return;
-    }
-
-    const left = Math.floor(Math.random() * (maxLeft + 1));
-    const top  = Math.floor(Math.random() * (maxTop + 1));
-
-    // Apply transform to move the NO button
-    noBtn.style.transform = `translate(${left - (noRect.left - parentRect.left)}px, ${top - (noRect.top - parentRect.top)}px)`;
-  }
-
-  // Desktop: mouseenter, Mobile: touchstart
-  noBtn.addEventListener('mouseenter', dodgeNoButton, {passive:true});
-  noBtn.addEventListener('touchstart', (e) => {
-    e.preventDefault(); // prevent click
-    dodgeNoButton();
-  }, {passive:false});
-
-  // If user somehow clicks NO, show a gentle message
-  noBtn.addEventListener('click', () => {
-    if (confirm("Bist du sicher? :)")) {
-      alert("Oh, schade — vielleicht ein anderes Mal.");
-    } else {
-      // revert transforms to let them click YES
-      resetNo();
-    }
-  });
-
-  function resetNo(){
-    noBtn.style.transform = '';
-    buttonsWrap.style.flexDirection = 'row';
-  }
-
   function showOverlay(){
     overlay.classList.remove('hidden');
-    // prevent scrolling
     document.body.style.overflow = 'hidden';
   }
 
   function hideOverlay(){
     overlay.classList.add('hidden');
     document.body.style.overflow = '';
-    // clear hearts
     heartsContainer.innerHTML = '';
   }
 
-  // spawn simple floating hearts
+  // hearts (same as before)
   function spawnHearts(count = 20){
     for (let i=0;i<count;i++){
       const h = document.createElement('div');
       h.className = 'heartParticle';
-      // random position from center
       const size = 12 + Math.random()*22;
       h.style.width = `${size}px`;
       h.style.height = `${size}px`;
@@ -89,8 +161,6 @@ document.addEventListener('DOMContentLoaded', () => {
       h.style.top = `${60 + Math.random()*20}%`;
       h.style.opacity = String(0.7 + Math.random()*0.3);
       heartsContainer.appendChild(h);
-
-      // animate using CSS keyframes via inline style (duration vary)
       const duration = 2200 + Math.random()*2000;
       h.animate([
         { transform: `translateY(0) scale(1) rotate(${Math.random()*40-20}deg)`, opacity: h.style.opacity },
@@ -101,8 +171,6 @@ document.addEventListener('DOMContentLoaded', () => {
         iterations: 1,
         fill: 'forwards'
       });
-
-      // remove after animation
       setTimeout(()=> h.remove(), duration + 60);
     }
   }
@@ -123,4 +191,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.head.appendChild(s);
   })();
 
+  // initialize positions once DOM + fonts ready
+  setInitialPositions();
+
+  // recompute positions on resize to avoid layout issues
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      setInitialPositions();
+    }, 120);
+  });
 });
